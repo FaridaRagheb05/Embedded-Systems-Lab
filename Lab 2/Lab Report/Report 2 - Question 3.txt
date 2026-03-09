@@ -1,11 +1,12 @@
 #include "TM4C123GH6PM.h"
 void delayMs(int n);
 
+volatile int mode=0;
+volatile int speed=1;
+volatile int phase=0;
+volatile int ON=1;
 
-int mode=0;
-int speed=1;
-
-int delays[] = {1000, 500, 250};
+unsigned int delays_clks[] = {16000000-1, 8000000-1, 4000000-1};
 
 int modeLED[4][3] = {
     {0x02,0,0}, //red
@@ -38,25 +39,14 @@ int main(void)
  NVIC->IP[30] = 3 << 5; /* set interrupt priority to 3 */
  NVIC->ISER[0] |= 0x40000000; /* enable IRQ30 (D30 of ISER[0]) */
 	//---------------------------------
- /* Configure SysTick */
- // SysTick->LOAD = 16000000-1; /* reload with number of clocks per second */
- // SysTick->CTRL = 7; /* enable SysTick interrupt, use system clock */	
+	SysTick->LOAD = delays_clks[1]; /* reload with number of clocks per second */
+	SysTick->CTRL = 7; /* enable SysTick interrupt, use system clock */	
  __enable_irq(); /* global enable IRQs */
 
  /* toggle the green/violet LED colors continuously */
 	
 	while (1)
 	{
-				int m = mode;
-        int s = speed;
-        int len = modeLen[m];
-
-        GPIOF->DATA = (GPIOF->DATA & ~0x0E) | modeLED[m][phase];
-        delayMs(delays[s]);
-        GPIOF->DATA &= ~0x0E;
-        delayMs(delays[s]);
-
-        phase = (phase + 1) % len;
 	}
 }
 
@@ -65,25 +55,36 @@ void GPIOF_Handler(void)
 	 volatile int readback;
 
     if (GPIOF->MIS & 0x10)
-		{
-			mode = (mode + 1) % 4;
-		}
+    {
+        mode=(mode+1) % 4;
+        phase= 0;
+    }
     else if (GPIOF->MIS & 0x01)
-		{
-			speed = (speed + 1) % 3;
-		}
+    {
+        speed = (speed +1) % 3;
+        SysTick->LOAD = delays_clks[speed];
+    }
 
     GPIOF->ICR |= 0x11;
     readback = GPIOF->ICR;
 }
 /* delay n milliseconds (16 MHz CPU clock) */
 
-void delayMs(int n)
+void SysTick_Handler(void)
 {
-    SysTick->LOAD = 15999 * n;
-    SysTick->CTRL = 0x5;
-    while ((SysTick->CTRL & 0x10000) == 0) 
-		{ 
-		}
-    SysTick->CTRL = 0;
+    int m=mode;
+    int len=modeLen[m];
+
+    if (ON)
+    {
+        GPIOF->DATA = (GPIOF->DATA & ~0x0E) | modeLED[m][phase];
+        ON = 0;
+    }
+    else
+    {
+        GPIOF->DATA &= ~0x0E;
+        ON = 1;
+        phase = (phase +1) % len;
+    }
 }
+
